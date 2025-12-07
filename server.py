@@ -343,10 +343,47 @@ async def health() -> dict:
 # Inicialização/Encerramento
 # ==========================
 
+import atexit
+import signal
 
-@mcp.on_shutdown
-async def _shutdown() -> None:
-    await SESSIONS.shutdown()
+
+def _shutdown_sync() -> None:
+    """Tenta encerrar sessões/playwright de forma graciosa ao finalizar o processo."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Se o loop estiver rodando, não podemos bloquear aqui com await.
+            # Fazemos uma melhor tentativa sem interromper: cria uma tarefa fire-and-forget.
+            try:
+                loop.create_task(SESSIONS.shutdown())
+            except Exception:
+                pass
+        else:
+            loop.run_until_complete(SESSIONS.shutdown())
+    except Exception:
+        # Em shutdown é aceitável falhar silenciosamente
+        pass
+
+
+def _handle_signal(signum, frame):
+    try:
+        _shutdown_sync()
+    finally:
+        # Encerrar o processo após tentar cleanup
+        try:
+            signal.signal(signum, signal.SIG_DFL)
+        except Exception:
+            pass
+
+
+# Registrar handlers de encerramento
+atexit.register(_shutdown_sync)
+try:
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+except Exception:
+    # Pode falhar em ambientes que não suportam signals (ex.: Windows antigo)
+    pass
 
 
 def main() -> None:
