@@ -8,6 +8,8 @@ from typing import Dict, Optional, Any, List
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+import inspect
+import atexit
 from playwright.async_api import async_playwright, Playwright, Browser, BrowserContext, Page, TimeoutError as PWTimeout
 
 
@@ -52,6 +54,38 @@ BASE_URL = "https://connect.nextron.ai/"
 
 
 mcp = FastMCP("nextron-mcp")
+
+# Compat: some FastMCP versions don't provide `on_shutdown`. Provide a fallback
+# decorator that registers the given handler to run on process exit.
+if not hasattr(mcp, "on_shutdown"):
+    def _fallback_on_shutdown(func=None):
+        def _register(handler):
+            if inspect.iscoroutinefunction(handler):
+                def _runner():
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            try:
+                                loop.create_task(handler())
+                            except Exception:
+                                pass
+                        else:
+                            loop.run_until_complete(handler())
+                    except Exception:
+                        # Best-effort during shutdown
+                        pass
+                atexit.register(_runner)
+            else:
+                atexit.register(lambda: (
+                    handler()
+                ))
+            return handler
+
+        # Support both @mcp.on_shutdown and @mcp.on_shutdown()
+        return _register if func is None else _register(func)
+
+    # Monkey-patch the instance to avoid AttributeError at import time
+    setattr(mcp, "on_shutdown", _fallback_on_shutdown)
 
 @dataclass
 class Session:
