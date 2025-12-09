@@ -50,8 +50,8 @@ BASE_URL = "https://connect.nextron.ai/"
 # Infra MCP e navegação web
 # ==========================
 
-mcp = FastMCP("nextron-mcp")
 
+mcp = FastMCP("nextron-mcp")
 
 @dataclass
 class Session:
