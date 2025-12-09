@@ -24,9 +24,9 @@ RUN pip install playwright mcp
 RUN playwright install --with-deps
 
 # Copia seu código MCP
-WORKDIR /app
-COPY . /app
+WORKDIR /code
+COPY . /code
 
 # Define comando para rodar o MCP
 EXPOSE 8080
-CMD ["python", "server.py", "--port", "8080"]
+CMD ["python", "main.py", "--port", "8080"]
