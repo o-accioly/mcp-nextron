@@ -229,14 +229,18 @@ async def ensure_logged_in(sess: Session) -> None:
         raise ValueError("Credenciais não encontradas. Defina EMAIL e PASSWORD no .env ou envie via parâmetros.")
 
     page = sess.page
-    # Ir para a página principal (deve redirecionar para login se não autenticado)
-    logger.info("Navegando para página inicial: %s", BASE_URL)
-    await page.goto(BASE_URL, wait_until="domcontentloaded")
+    # Ir para uma página protegida para verificar se redireciona para login
+    PROPOSAL_URL = f"{BASE_URL}hub/sales/onboardings/save"
+    logger.info("Verificando autenticação via acesso a: %s", PROPOSAL_URL)
+    await page.goto(PROPOSAL_URL, wait_until="domcontentloaded")
 
-    # Verifica se já está logado (heurística: existência de algum elemento da aplicação após login)
-    if page.url.startswith(BASE_URL) and "login" not in page.url:
-        logger.info("Já autenticado como %s", sess.email or "(desconhecido)")
+    # Se a URL não contiver "login", assumimos que está autenticado
+    # (ou se permanecer na URL protegida)
+    if not "login" in page.url:
+        logger.info("Já autenticado (URL atual: %s)", page.url)
         return
+    
+    logger.info("Redirecionado para login (URL: %s). Iniciando processo de autenticação.", page.url)
 
     # Preenche formulário de login
     logger.info("Realizando login para usuário %s", user)
