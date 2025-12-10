@@ -370,15 +370,18 @@ async def close_session(session_id: str) -> dict:
 
 
 @mcp.tool()
-async def login(session_id: str, email: Optional[str] = None, password: Optional[str] = None) -> dict:
+async def login(session_id: str, email: str = "", password: str = "") -> dict:
     """Realiza login no Nextron usando a sessão informada.
 
     Se `email`/`password` não forem fornecidos, usa NEXTRON_EMAIL e NEXTRON_PASSWORD do .env
     """
     sess = SESSIONS.get(session_id)
     async with sess.lock:
-        await ensure_logged_in(sess, email=email, password=password)
-        logger.info("Tool login(session_id=%s, email=%s) -> ok", session_id, email or sess.email)
+        # Tratar string vazia como None
+        e = email if email else None
+        p = password if password else None
+        await ensure_logged_in(sess, email=e, password=p)
+        logger.info("Tool login(session_id=%s, email=%s) -> ok", session_id, e or sess.email)
         return {"ok": True, "mensagem": "Login efetuado"}
 
 
@@ -388,25 +391,30 @@ async def gerar_proposta(
     nome_completo: str,
     email: str,
     telefone: str,
-    valor_conta_brl: float,
-    distribuidora: Optional[str] = None,
+    valor_conta_brl: str,
+    distribuidora: str = "",
 ) -> dict:
     """Cria uma proposta para um cliente na página de onboarding.
 
     Parâmetros:
       - session_id: ID da sessão criada por `new_session`
       - nome_completo, email, telefone: dados do cliente
-      - valor_conta_brl: valor médio da conta de luz (BRL)
+      - valor_conta_brl: valor médio da conta de luz (BRL) - envie como string ex "150.00"
       - distribuidora: opcional, tenta preencher o campo de distribuidora
     """
+    try:
+        val_float = float(valor_conta_brl)
+    except ValueError:
+        return {"ok": False, "mensagem": f"Valor da conta inválido: {valor_conta_brl}"}
+
     sess = SESSIONS.get(session_id)
     async with sess.lock:
         await ensure_logged_in(sess)
         logger.info(
             "Tool gerar_proposta(session_id=%s, nome=%s, email=%s, telefone=%s, valor=%.2f, distribuidora=%s)",
-            session_id, nome_completo, email, telefone, valor_conta_brl, distribuidora,
+            session_id, nome_completo, email, telefone, val_float, distribuidora,
         )
-        return await gerar_proposta_impl(sess, distribuidora, nome_completo, email, telefone, valor_conta_brl)
+        return await gerar_proposta_impl(sess, distribuidora or None, nome_completo, email, telefone, val_float)
 
 
 @mcp.tool()
