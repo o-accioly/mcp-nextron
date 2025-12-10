@@ -3,6 +3,14 @@ FROM mcr.microsoft.com/playwright/python:v1.56.0-jammy
 # Diretório de trabalho
 WORKDIR /app
 
+# Instala dependências do sistema para compilação (necessário para alguns pacotes Python)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3-dev \
+    libffi-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Instala dependências Python (melhor aproveitamento de cache)
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
