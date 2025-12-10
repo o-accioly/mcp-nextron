@@ -1,0 +1,21 @@
+services:
+  nextron-mcp:
+    build: .
+    container_name: nextron_mcp_server
+    # Usa a rede do host para memória compartilhada (evita crash do Chrome)
+    ipc: host
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Força o modo SSE para funcionar via rede Docker
+      - MCP_TRANSPORT=sse
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8000
+      # Configuração de Logs
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    # Monta o código localmente para desenvolvimento (opcional, remova em produção)
+    volumes:
+      - ./main.py:/code/main.py
