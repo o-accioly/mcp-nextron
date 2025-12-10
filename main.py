@@ -10,11 +10,23 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 import inspect
 import atexit
+import logging
 from playwright.async_api import async_playwright, Playwright, Browser, BrowserContext, Page, TimeoutError as PWTimeout
 
 
 # Carregar variáveis de ambiente (.env)
 load_dotenv()
+
+# ==========================
+# Logging
+# ==========================
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("nextron-mcp")
 
 BASE_URL = "https://connect.nextron.ai/"
 
@@ -54,6 +66,7 @@ BASE_URL = "https://connect.nextron.ai/"
 
 
 mcp = FastMCP("nextron-mcp")
+logger.info("Inicializando MCP server 'nextron-mcp'")
 
 # Compat: some FastMCP versions don't provide `on_shutdown`. Provide a fallback
 # decorator that registers the given handler to run on process exit.
@@ -87,6 +100,13 @@ if not hasattr(mcp, "on_shutdown"):
     # Monkey-patch the instance to avoid AttributeError at import time
     setattr(mcp, "on_shutdown", _fallback_on_shutdown)
 
+# Alias defensivo: tratar typo on_shotdown -> on_shutdown, se alguém usar
+if not hasattr(mcp, "on_shotdown"):
+    try:
+        setattr(mcp, "on_shotdown", getattr(mcp, "on_shutdown"))
+    except Exception:
+        pass
+
 @dataclass
 class Session:
     context: BrowserContext
@@ -108,9 +128,11 @@ class SessionManager:
         async with self._global_lock:
             if self._browser:
                 return
+            logger.info("Iniciando Playwright")
             self._playwright = await async_playwright().start()
             # Chromium é normalmente mais estável para sites modernos
-            self._browser = await self._playwright.chromium.launch(headless=True)
+            logger.info("Lançando navegador Chromium (headless)")
+            self._browser = await self._playwright.chromium.launch(headless=True, args=["--no-sandbox"])
 
     async def new_session(self) -> str:
         await self._ensure_browser()
@@ -119,6 +141,7 @@ class SessionManager:
         page = await context.new_page()
         sid = uuid.uuid4().hex
         self._sessions[sid] = Session(context=context, page=page, lock=asyncio.Lock())
+        logger.info("Sessão criada: %s", sid)
         return sid
 
     def get(self, session_id: str) -> Session:
@@ -129,7 +152,9 @@ class SessionManager:
     async def close(self, session_id: str) -> bool:
         sess = self._sessions.pop(session_id, None)
         if not sess:
+            logger.warning("Tentativa de fechar sessão inexistente: %s", session_id)
             return False
+        logger.info("Fechando sessão: %s", session_id)
         try:
             await sess.page.close()
         except Exception:
@@ -141,6 +166,7 @@ class SessionManager:
         return True
 
     async def shutdown(self) -> None:
+        logger.info("Shutdown iniciado: fechando %d sessão(ões)", len(self._sessions))
         for sid in list(self._sessions.keys()):
             try:
                 await self.close(sid)
@@ -148,12 +174,14 @@ class SessionManager:
                 pass
         if self._browser:
             try:
+                logger.info("Fechando navegador")
                 await self._browser.close()
             except Exception:
                 pass
             self._browser = None
         if self._playwright:
             try:
+                logger.info("Parando Playwright")
                 await self._playwright.stop()
             except Exception:
                 pass
@@ -173,13 +201,16 @@ async def ensure_logged_in(sess: Session, email: Optional[str] = None, password:
 
     page = sess.page
     # Ir para a página principal (deve redirecionar para login se não autenticado)
+    logger.info("Navegando para página inicial: %s", BASE_URL)
     await page.goto(BASE_URL, wait_until="domcontentloaded")
 
     # Verifica se já está logado (heurística: existência de algum elemento da aplicação após login)
     if page.url.startswith(BASE_URL) and "login" not in page.url:
+        logger.info("Já autenticado como %s", sess.email or "(desconhecido)")
         return
 
     # Preenche formulário de login
+    logger.info("Realizando login para usuário %s", user)
     await page.wait_for_selector('input[name="email"]', timeout=20_000)
     await page.fill('input[name="email"]', user)
     await page.fill('input[name="password"]', pwd)
@@ -191,6 +222,7 @@ async def ensure_logged_in(sess: Session, email: Optional[str] = None, password:
     except PWTimeout:
         # Em alguns casos a app mantém a mesma URL base; validar presença de um elemento comum pós-login
         # Se falhar, lança erro claro
+        logger.error("Falha no login: timeout aguardando redirecionamento")
         raise RuntimeError("Falha no login: timeout aguardando redirecionamento")
 
     sess.email = user
@@ -205,6 +237,7 @@ async def gerar_proposta_impl(
     valor_conta_brl: float,
 ) -> Dict[str, Any]:
     page = sess.page
+    logger.info("Abrindo página de cadastro de cliente")
 
     # Abrir página de cadastro de cliente
     await page.goto(f"{BASE_URL}hub/sales/onboardings/save", wait_until="domcontentloaded")
@@ -230,6 +263,7 @@ async def gerar_proposta_impl(
                 pass
 
     # Abrir modal de gerar proposta
+    logger.info("Abrindo modal 'Gerar proposta'")
     await page.get_by_role("button", name=lambda n: n and "Gerar proposta" in n).click()
 
     # Aguardar input no popup e preencher valor da conta de luz
@@ -243,23 +277,28 @@ async def gerar_proposta_impl(
         # Fallback por nome de role
         buttons = page.get_by_role("button", name=lambda n: n and "Gerar Proposta" in n)
     await buttons.first.click()
+    logger.info("Botão 'Gerar Proposta' clicado, aguardando snackbar/resultado")
 
     # Aguardar 5s e verificar snackbar de erro
     await page.wait_for_timeout(5_000)
     snackbar = page.locator('.MuiSnackbar-root')
     if await snackbar.count() > 0:
         txt = (await snackbar.inner_text()).strip()
+        logger.warning("Snackbar de erro durante gerar proposta: %s", txt)
         return {"ok": False, "mensagem": txt}
 
     # Verificar URL de sucesso
     if "hub/sales/onboardings/save" in page.url:
+        logger.info("Proposta criada com sucesso")
         return {"ok": True, "mensagem": "Proposta criada com sucesso", "url": page.url}
     else:
+        logger.warning("URL inesperada após gerar proposta: %s", page.url)
         return {"ok": False, "mensagem": "URL inesperada após gerar proposta", "url": page.url}
 
 
 async def buscar_cliente_impl(sess: Session, email: str) -> Dict[str, Any]:
     page = sess.page
+    logger.info("Abrindo página de clientes para buscar email=%s", email)
     await page.goto(f"{BASE_URL}sales/onboardings", wait_until="domcontentloaded")
 
     # Abrir filtros
@@ -282,6 +321,7 @@ async def buscar_cliente_impl(sess: Session, email: str) -> Dict[str, Any]:
 
     rows = page.locator('.MuiDataGrid-virtualScrollerRenderZone div.MuiDataGrid-row')
     count = await rows.count()
+    logger.info("Busca retornou %d linha(s)", count)
     resultados: List[Dict[str, Any]] = []
     for i in range(count):
         row = rows.nth(i)
@@ -313,6 +353,7 @@ async def new_session() -> dict:
     Retorna um objeto com `session_id` que deve ser usado nas outras tools.
     """
     sid = await SESSIONS.new_session()
+    logger.info("Tool new_session -> %s", sid)
     return {"session_id": sid}
 
 
@@ -320,6 +361,7 @@ async def new_session() -> dict:
 async def close_session(session_id: str) -> dict:
     """Fecha e limpa a sessão indicada."""
     ok = await SESSIONS.close(session_id)
+    logger.info("Tool close_session(session_id=%s) -> ok=%s", session_id, ok)
     return {"ok": ok}
 
 
@@ -332,6 +374,7 @@ async def login(session_id: str, email: Optional[str] = None, password: Optional
     sess = SESSIONS.get(session_id)
     async with sess.lock:
         await ensure_logged_in(sess, email=email, password=password)
+        logger.info("Tool login(session_id=%s, email=%s) -> ok", session_id, email or sess.email)
         return {"ok": True, "mensagem": "Login efetuado"}
 
 
@@ -355,6 +398,10 @@ async def gerar_proposta(
     sess = SESSIONS.get(session_id)
     async with sess.lock:
         await ensure_logged_in(sess)
+        logger.info(
+            "Tool gerar_proposta(session_id=%s, nome=%s, email=%s, telefone=%s, valor=%.2f, distribuidora=%s)",
+            session_id, nome_completo, email, telefone, valor_conta_brl, distribuidora,
+        )
         return await gerar_proposta_impl(sess, distribuidora, nome_completo, email, telefone, valor_conta_brl)
 
 
@@ -364,6 +411,7 @@ async def buscar_cliente(session_id: str, email: str) -> dict:
     sess = SESSIONS.get(session_id)
     async with sess.lock:
         await ensure_logged_in(sess)
+        logger.info("Tool buscar_cliente(session_id=%s, email=%s)", session_id, email)
         return await buscar_cliente_impl(sess, email)
 
 
@@ -401,6 +449,7 @@ def _shutdown_sync() -> None:
 
 def _handle_signal(signum, frame):
     try:
+        logger.info("Sinal recebido: %s. Iniciando shutdown...", signum)
         _shutdown_sync()
     finally:
         # Encerrar o processo após tentar cleanup
@@ -421,8 +470,18 @@ except Exception:
 
 
 def main() -> None:
-    # Executa o servidor MCP via stdio
-    mcp.run()
+    # Executa o servidor MCP via stdio ou SSE dependendo da configuração
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    if transport == "sse":
+        host = os.getenv("MCP_HOST", "0.0.0.0")
+        port = int(os.getenv("MCP_PORT", "8000"))
+        mcp.settings.host = host
+        mcp.settings.port = port
+        logger.info("Iniciando loop MCP (SSE) em %s:%s", host, port)
+        mcp.run(transport="sse")
+    else:
+        logger.info("Iniciando loop MCP (stdio)")
+        mcp.run()
 
 
 if __name__ == "__main__":

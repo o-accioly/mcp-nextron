@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+.git/
+.gitignore
+*.ipynb
+node_modules/
+dist/
+build/
+.env
+README.md
