@@ -6,8 +6,6 @@ services:
     ipc: host
     ports:
       - "8000:8000"
-    env_file:
-      - .env
     environment:
       # Passar variáveis do host (Easypanel) para o container
       - EMAIL=${EMAIL}
