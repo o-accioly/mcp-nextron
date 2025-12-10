@@ -268,15 +268,25 @@ async def gerar_proposta_impl(
 ) -> Dict[str, Any]:
     page = sess.page
 
-    logger.info("Abrindo página de cadastro de cliente")
-
+    logger.info("URL atual: %s", page.url)
+    logger.info("Acessando página de cadastro de cliente")
+    logger.info("URL de cadastro de cliente: %s", f"{BASE_URL}hub/sales/onboardings/save")
+    
     # Abrir página de cadastro de cliente
-    await page.goto(f"{BASE_URL}hub/sales/onboardings/save", wait_until="domcontentloaded")
-
+    await page.goto(f"{BASE_URL}hub/sales/onboardings/save")
+    
     # Preencher dados básicos
+    logger.info("Preenchendo dados básicos")
+    logger.info("URL atual: %s", page.url)
+
     await page.fill('input[name="contact_name"]', nome_completo)
+    logger.info("Nome completo: %s", nome_completo)
+
     await page.fill('input[name="email"]', email)
+    logger.info("Email: %s", email)
+
     await page.fill('input[name="telephone"]', telefone)
+    logger.info("Telefone: %s", telefone)
 
     # Distribuidora (o ID pode variar; tentar seletor direto e fallback por combobox)
     if distribuidora:
