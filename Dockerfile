@@ -1,7 +1,9 @@
 FROM mcr.microsoft.com/playwright/python:v1.56.0-jammy
 
 # Diretório de trabalho
-WORKDIR /app
+WORKDIR /code
+
+COPY requirements.txt .
 
 # Instala dependências do sistema para compilação (necessário para alguns pacotes Python)
 RUN apt-get update && apt-get install -y \
@@ -11,12 +13,16 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Instala dependências Python (melhor aproveitamento de cache)
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+ENV LANG=pt_BR.UTF-8  
+ENV LANGUAGE=pt_BR:pt  
+ENV LC_ALL=pt_BR.UTF-8
 
-# Copia o restante do código
-COPY . /app
+# Instala dependências Python (melhor aproveitamento de cache)
+RUN pip install -r requirements.txt && \
+    apt-get update && apt-get install -y nodejs npm && \
+    npm install
+
+COPY . .
 
 # Ambiente
 ENV PYTHONUNBUFFERED=1 \
@@ -29,4 +35,4 @@ ENV PYTHONUNBUFFERED=1 \
 EXPOSE 8000
 
 # Executa o MCP por STDIO
-CMD ["python", "main.py"]
+CMD ["/bin/sh", "-c", "python main.py"]
