@@ -25,8 +25,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # --- 3. Instalação de Dependências Node ---
 # Precisamos copiar o package.json ANTES de rodar npm install
 # Se você tiver package-lock.json, é bom copiar também, caso contrário, remova a parte do lock
-COPY package.json package-lock.json* ./
-RUN npm install
 
 # --- 4. Copia o código fonte ---
 COPY . .
