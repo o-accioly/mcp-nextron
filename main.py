@@ -236,22 +236,33 @@ async def ensure_logged_in(sess: Session) -> None:
 
         # Preenche formulário de login
         logger.info("Realizando login para usuário %s", user)
+        page_content = await page.content()
+        logger.info("Conteúdo da página: %s", page_content)
+
+        email_input_visible = await page.is_visible('input[name="email"]')
+        logger.info("Elemento de email visível: %s", email_input_visible)
 
         await page.wait_for_selector('input[name="email"]', timeout=20_000)
+        logger.info("Elemento de email encontrado") 
         await page.fill('input[name="email"]', user)
+        logger.info("Email preenchido")
         await page.fill('input[name="password"]', pwd)
+        logger.info("Senha preenchida")
         await page.click('button[type="submit"]')
+        logger.info("Botão de login clicado")
 
-    # Aguarda redirecionamento pós-login
-    try:
-        await page.wait_for_url(lambda url: url.startswith(BASE_URL) and "login" not in url, timeout=30_000)
-    except PWTimeout:
-        # Em alguns casos a app mantém a mesma URL base; validar presença de um elemento comum pós-login
-        # Se falhar, lança erro claro
-        logger.error("Falha no login: timeout aguardando redirecionamento")
-        raise RuntimeError("Falha no login: timeout aguardando redirecionamento")
+        # Aguarda redirecionamento pós-login
+        try:
+            logger.info("Aguardando redirecionamento pós-login")
+            await page.wait_for_url(lambda url: url.startswith(BASE_URL) and "login" not in url, timeout=30_000)
+            logger.info("Redirecionado para URL: %s", page.url)
+        except PWTimeout:
+            # Em alguns casos a app mantém a mesma URL base; validar presença de um elemento comum pós-login
+            # Se falhar, lança erro claro
+            logger.error("Falha no login: timeout aguardando redirecionamento")
+            raise RuntimeError("Falha no login: timeout aguardando redirecionamento")
 
-    sess.email = user
+        sess.email = user
 
 
 async def gerar_proposta_impl(
