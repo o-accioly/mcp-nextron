@@ -251,16 +251,7 @@ async def ensure_logged_in(sess: Session) -> None:
         await page.click('button[type="submit"]')
         logger.info("Botão de login clicado")
 
-        # Aguarda redirecionamento pós-login
-        try:
-            logger.info("Aguardando redirecionamento pós-login")
-            await page.wait_for_url(lambda url: url.startswith(BASE_URL) and "login" not in url, timeout=30_000)
-            logger.info("Redirecionado para URL: %s", page.url)
-        except PWTimeout:
-            # Em alguns casos a app mantém a mesma URL base; validar presença de um elemento comum pós-login
-            # Se falhar, lança erro claro
-            logger.error("Falha no login: timeout aguardando redirecionamento")
-            raise RuntimeError("Falha no login: timeout aguardando redirecionamento")
+        logger.info("Url atual: %s", page.url)
 
         sess.email = user
 
