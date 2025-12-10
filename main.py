@@ -29,6 +29,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nextron-mcp")
 
+# Debug: Verificar variáveis de ambiente
+_email = os.getenv("EMAIL")
+_password = os.getenv("PASSWORD")
+if _email:
+    logger.info("EMAIL configurado: %s", _email)
+else:
+    logger.warning("EMAIL não encontrado nas variáveis de ambiente!")
+
+if _password:
+    logger.info("PASSWORD configurado: [MASKED] (len=%d)", len(_password))
+else:
+    logger.warning("PASSWORD não encontrado nas variáveis de ambiente!")
+
 BASE_URL = "https://connect.nextron.ai/"
 
 #
@@ -370,20 +383,6 @@ async def close_session(session_id: str) -> dict:
     return {"ok": ok}
 
 
-@mcp.tool()
-async def login(session_id: str, email: str = "", password: str = "") -> dict:
-    """Realiza login no Nextron usando a sessão informada.
-
-    Se `email`/`password` não forem fornecidos, usa NEXTRON_EMAIL e NEXTRON_PASSWORD do .env
-    """
-    sess = SESSIONS.get(session_id)
-    async with sess.lock:
-        # Tratar string vazia como None
-        e = email if email else None
-        p = password if password else None
-        await ensure_logged_in(sess, email=e, password=p)
-        logger.info("Tool login(session_id=%s, email=%s) -> ok", session_id, e or sess.email)
-        return {"ok": True, "mensagem": "Login efetuado"}
 
 
 @mcp.tool()
