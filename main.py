@@ -220,9 +220,6 @@ async def ensure_logged_in(sess: Session) -> None:
     user = os.getenv("EMAIL")
     pwd = os.getenv("PASSWORD")
 
-    sess.email = user
-    sess.password = pwd
-
     logger.info("Verificando login com credenciais: %s", user)
 
     if not user or not pwd:
@@ -234,21 +231,16 @@ async def ensure_logged_in(sess: Session) -> None:
     logger.info("Verificando autenticação via acesso a: %s", PROPOSAL_URL)
     await page.goto(PROPOSAL_URL, wait_until="domcontentloaded")
 
-    # Se a URL não contiver "login", assumimos que está autenticado
-    # (ou se permanecer na URL protegida)
-    if not "login" in page.url:
-        logger.info("Já autenticado (URL atual: %s)", page.url)
-        return
-    
-    logger.info("Redirecionado para login (URL: %s). Iniciando processo de autenticação.", page.url)
+    if page.url != PROPOSAL_URL:
+        logger.info("Redirecionado para login (URL: %s). Iniciando processo de autenticação.", page.url)
 
-    # Preenche formulário de login
-    logger.info("Realizando login para usuário %s", user)
+        # Preenche formulário de login
+        logger.info("Realizando login para usuário %s", user)
 
-    await page.wait_for_selector('input[name="email"]', timeout=20_000)
-    await page.fill('input[name="email"]', user)
-    await page.fill('input[name="password"]', pwd)
-    await page.click('button[type="submit"]')
+        await page.wait_for_selector('input[name="email"]', timeout=20_000)
+        await page.fill('input[name="email"]', user)
+        await page.fill('input[name="password"]', pwd)
+        await page.click('button[type="submit"]')
 
     # Aguarda redirecionamento pós-login
     try:
