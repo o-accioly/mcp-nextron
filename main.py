@@ -142,23 +142,30 @@ class SessionManager:
     async def _ensure_browser(self) -> None:
         if self._browser:
             return
+
         async with self._global_lock:
             if self._browser:
                 return
+
             logger.info("Iniciando Playwright")
             self._playwright = await async_playwright().start()
+
             # Chromium é normalmente mais estável para sites modernos
             logger.info("Lançando navegador Chromium (headless)")
             self._browser = await self._playwright.chromium.launch(headless=True, args=["--no-sandbox"])
 
     async def new_session(self) -> str:
         await self._ensure_browser()
+
         assert self._browser is not None
+
         context = await self._browser.new_context()
         page = await context.new_page()
+
         sid = uuid.uuid4().hex
         self._sessions[sid] = Session(context=context, page=page, lock=asyncio.Lock())
         logger.info("Sessão criada: %s", sid)
+
         return sid
 
     def get(self, session_id: str) -> Session:
@@ -208,10 +215,15 @@ class SessionManager:
 SESSIONS = SessionManager()
 
 
-async def ensure_logged_in(sess: Session, email: Optional[str] = None, password: Optional[str] = None) -> None:
+async def ensure_logged_in(sess: Session) -> None:
     # Pega credenciais do .env se não fornecidas
-    user = email or os.getenv("EMAIL")
-    pwd = password or os.getenv("PASSWORD")
+    user = os.getenv("EMAIL")
+    pwd = os.getenv("PASSWORD")
+
+    sess.email = user
+    sess.password = pwd
+
+    logger.info("Verificando login com credenciais: %s", user)
 
     if not user or not pwd:
         raise ValueError("Credenciais não encontradas. Defina EMAIL e PASSWORD no .env ou envie via parâmetros.")
@@ -228,6 +240,7 @@ async def ensure_logged_in(sess: Session, email: Optional[str] = None, password:
 
     # Preenche formulário de login
     logger.info("Realizando login para usuário %s", user)
+
     await page.wait_for_selector('input[name="email"]', timeout=20_000)
     await page.fill('input[name="email"]', user)
     await page.fill('input[name="password"]', pwd)
@@ -382,9 +395,6 @@ async def close_session(session_id: str) -> dict:
     logger.info("Tool close_session(session_id=%s) -> ok=%s", session_id, ok)
     return {"ok": ok}
 
-
-
-
 @mcp.tool()
 async def gerar_proposta(
     session_id: str,
@@ -402,18 +412,22 @@ async def gerar_proposta(
       - valor_conta_brl: valor médio da conta de luz (BRL) - envie como string ex "150.00"
       - distribuidora: opcional, tenta preencher o campo de distribuidora
     """
+
     try:
         val_float = float(valor_conta_brl)
     except ValueError:
         return {"ok": False, "mensagem": f"Valor da conta inválido: {valor_conta_brl}"}
 
     sess = SESSIONS.get(session_id)
+
     async with sess.lock:
         await ensure_logged_in(sess)
+
         logger.info(
             "Tool gerar_proposta(session_id=%s, nome=%s, email=%s, telefone=%s, valor=%.2f, distribuidora=%s)",
             session_id, nome_completo, email, telefone, val_float, distribuidora,
         )
+
         return await gerar_proposta_impl(sess, distribuidora or None, nome_completo, email, telefone, val_float)
 
 
