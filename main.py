@@ -241,6 +241,7 @@ async def gerar_proposta_impl(
     valor_conta_brl: float,
 ) -> Dict[str, Any]:
     page = sess.page
+
     logger.info("Abrindo página de cadastro de cliente")
 
     # Abrir página de cadastro de cliente

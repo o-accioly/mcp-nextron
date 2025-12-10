@@ -9,12 +9,15 @@ services:
     env_file:
       - .env
     environment:
+      # Passar variáveis do host (Easypanel) para o container
+      - EMAIL=${EMAIL}
+      - PASSWORD=${PASSWORD}
       # Força o modo SSE para funcionar via rede Docker
       - MCP_TRANSPORT=sse
       - MCP_HOST=0.0.0.0
       - MCP_PORT=8000
       # Configuração de Logs
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
     # Monta o código localmente para desenvolvimento (opcional, remova em produção)
     volumes:
