@@ -3,25 +3,32 @@ FROM mcr.microsoft.com/playwright/python:v1.56.0-jammy
 # Diretório de trabalho
 WORKDIR /code
 
-COPY requirements.txt .
-
-# Instala dependências do sistema para compilação (necessário para alguns pacotes Python)
+# --- 1. Instalação de Dependências do Sistema (Incluindo Node/NPM) ---
+# Fazemos isso primeiro pois muda com menos frequência
 RUN apt-get update && apt-get install -y \
     build-essential \
     python3-dev \
     libffi-dev \
     libssl-dev \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 ENV LANG=pt_BR.UTF-8  
 ENV LANGUAGE=pt_BR:pt  
 ENV LC_ALL=pt_BR.UTF-8
 
-# Instala dependências Python (melhor aproveitamento de cache)
-RUN pip install -r requirements.txt && \
-    apt-get update && apt-get install -y nodejs npm && \
-    npm install
+# --- 2. Instalação de Dependências Python ---
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
+# --- 3. Instalação de Dependências Node ---
+# Precisamos copiar o package.json ANTES de rodar npm install
+# Se você tiver package-lock.json, é bom copiar também, caso contrário, remova a parte do lock
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# --- 4. Copia o código fonte ---
 COPY . .
 
 # Ambiente
