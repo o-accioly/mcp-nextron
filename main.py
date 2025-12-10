@@ -12,6 +12,7 @@ import inspect
 import atexit
 import logging
 from playwright.async_api import async_playwright, Playwright, Browser, BrowserContext, Page, TimeoutError as PWTimeout
+from mcp.server.transport_security import TransportSecuritySettings
 
 
 # Carregar variáveis de ambiente (.env)
@@ -65,7 +66,10 @@ BASE_URL = "https://connect.nextron.ai/"
 # ==========================
 
 
-mcp = FastMCP("nextron-mcp")
+mcp = FastMCP(
+    "nextron-mcp",
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False)
+)
 logger.info("Inicializando MCP server 'nextron-mcp'")
 
 # Compat: some FastMCP versions don't provide `on_shutdown`. Provide a fallback
